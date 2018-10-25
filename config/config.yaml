@@ -1,0 +1,260 @@
+# Banking Risk Analytics Warehouse Configuration
+
+# Database Configuration
+database:
+  synapse:
+    server: "${SYNAPSE_SERVER}"
+    database: "BankingRiskWarehouse"
+    username: "${SQL_USERNAME}"
+    password: "${SQL_PASSWORD}"
+    driver: "ODBC Driver 17 for SQL Server"
+    pool_size: 10
+    timeout: 30
+  
+  connection_string: "Driver={ODBC Driver 17 for SQL Server};Server=${SYNAPSE_SERVER};Database=BankingRiskWarehouse;Uid=${SQL_USERNAME};Pwd=${SQL_PASSWORD};Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
+
+# Risk Calculation Parameters
+risk_parameters:
+  credit_risk:
+    pd_model:
+      intercept: -2.5
+      credit_score_coefficient: -0.015
+      debt_ratio_coefficient: 1.2
+      delinquency_coefficient: 0.8
+    
+    lgd:
+      default_recovery_rate: 0.40
+      secured_recovery_rate: 0.80
+      unsecured_recovery_rate: 0.40
+    
+    ead:
+      default_utilization_rate: 0.75
+    
+    risk_ratings:
+      - { min_pd: 0.0000, max_pd: 0.0010, rating: "AAA" }
+      - { min_pd: 0.0010, max_pd: 0.0050, rating: "AA" }
+      - { min_pd: 0.0050, max_pd: 0.0100, rating: "A" }
+      - { min_pd: 0.0100, max_pd: 0.0250, rating: "BBB" }
+      - { min_pd: 0.0250, max_pd: 0.0500, rating: "BB" }
+      - { min_pd: 0.0500, max_pd: 0.1000, rating: "B" }
+      - { min_pd: 0.1000, max_pd: 1.0000, rating: "CCC" }
+  
+  market_risk:
+    var:
+      confidence_levels: [0.95, 0.99]
+      holding_period_days: 1
+      methods: ["historical", "parametric", "monte_carlo"]
+      lookback_period_days: 252
+    
+    stress_scenarios:
+      baseline:
+        equity_shock: 0.00
+        interest_rate_shock: 0.00
+        credit_spread_shock: 0.00
+        fx_shock: 0.00
+      
+      adverse:
+        equity_shock: -0.15
+        interest_rate_shock: 0.01
+        credit_spread_shock: 0.005
+        fx_shock: 0.10
+      
+      severely_adverse:
+        equity_shock: -0.30
+        interest_rate_shock: 0.02
+        credit_spread_shock: 0.01
+        fx_shock: 0.20
+      
+      market_crash:
+        equity_shock: -0.40
+        interest_rate_shock: 0.03
+        credit_spread_shock: 0.015
+        fx_shock: 0.25
+  
+  operational_risk:
+    capital_multiplier: 3.0
+    confidence_level: 0.999
+    loss_categories:
+      - "Internal Fraud"
+      - "External Fraud"
+      - "Employment Practices"
+      - "Clients, Products & Business Practices"
+      - "Damage to Physical Assets"
+      - "Business Disruption"
+      - "Execution, Delivery & Process Management"
+
+# Regulatory Requirements
+regulatory:
+  basel_iii:
+    minimum_cet1_ratio: 0.045
+    minimum_tier1_ratio: 0.06
+    minimum_total_capital_ratio: 0.08
+    capital_conservation_buffer: 0.025
+    countercyclical_buffer: 0.00
+    systemic_buffer: 0.00
+  
+  risk_weights:
+    sovereign: 0.00
+    bank: 0.20
+    corporate: 1.00
+    retail: 0.75
+    residential_mortgage: 0.35
+    commercial_real_estate: 1.00
+    equity: 1.00
+    other: 1.00
+  
+  reporting_frequency:
+    daily: ["risk_summary", "var_report"]
+    weekly: ["stress_test_results"]
+    monthly: ["capital_adequacy", "regulatory_report"]
+    quarterly: ["basel_pillar3", "ccar_report"]
+
+# Data Pipeline Configuration
+pipeline:
+  batch_size: 10000
+  parallel_workers: 4
+  retry_attempts: 3
+  retry_delay_seconds: 60
+  
+  schedules:
+    credit_risk_calculation: "0 2 * * *"  # Daily at 2 AM
+    market_risk_calculation: "0 */4 * * *"  # Every 4 hours
+    operational_risk_aggregation: "0 3 * * *"  # Daily at 3 AM
+    regulatory_reporting: "0 4 1 * *"  # Monthly on 1st at 4 AM
+    stress_testing: "0 5 * * 0"  # Weekly on Sunday at 5 AM
+
+# API Configuration
+api:
+  host: "0.0.0.0"
+  port: 5000
+  debug: false
+  cors_origins: ["*"]
+  rate_limit: "100 per minute"
+  
+  authentication:
+    enabled: true
+    type: "bearer_token"
+    token_expiry_hours: 24
+  
+  endpoints:
+    health: "/health"
+    credit_risk: "/api/v1/credit-risk/calculate"
+    market_risk: "/api/v1/market-risk/var"
+    operational_risk: "/api/v1/operational-risk/calculate"
+    regulatory: "/api/v1/regulatory/capital-ratios"
+    stress_test: "/api/v1/stress-test/run"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  handlers:
+    console:
+      enabled: true
+      level: "INFO"
+    
+    file:
+      enabled: true
+      level: "DEBUG"
+      filename: "logs/banking_risk.log"
+      max_bytes: 10485760  # 10MB
+      backup_count: 5
+    
+    azure_monitor:
+      enabled: true
+      instrumentation_key: "${APPINSIGHTS_INSTRUMENTATIONKEY}"
+
+# Monitoring and Alerts
+monitoring:
+  metrics:
+    - name: "credit_risk_calculation_time"
+      type: "histogram"
+    - name: "api_request_count"
+      type: "counter"
+    - name: "data_quality_score"
+      type: "gauge"
+  
+  alerts:
+    - name: "high_expected_loss"
+      condition: "expected_loss > 1000000"
+      severity: "high"
+      notification: ["email", "sms"]
+    
+    - name: "capital_ratio_breach"
+      condition: "cet1_ratio < 0.045"
+      severity: "critical"
+      notification: ["email", "sms", "pagerduty"]
+    
+    - name: "var_limit_breach"
+      condition: "var_95 < -5000000"
+      severity: "high"
+      notification: ["email"]
+
+# Data Quality Rules
+data_quality:
+  rules:
+    - table: "fact.credit_risk"
+      checks:
+        - type: "not_null"
+          columns: ["loan_id", "customer_key", "date_key"]
+        - type: "range"
+          column: "probability_of_default"
+          min: 0.0
+          max: 1.0
+        - type: "range"
+          column: "loss_given_default"
+          min: 0.0
+          max: 1.0
+    
+    - table: "fact.market_risk"
+      checks:
+        - type: "not_null"
+          columns: ["position_id", "date_key"]
+        - type: "positive"
+          columns: ["market_value", "notional_value"]
+    
+    - table: "fact.capital_adequacy"
+      checks:
+        - type: "not_null"
+          columns: ["date_key"]
+        - type: "positive"
+          columns: ["total_capital", "total_rwa"]
+        - type: "range"
+          column: "cet1_ratio"
+          min: 0.0
+          max: 1.0
+
+# Security Configuration
+security:
+  encryption:
+    at_rest: true
+    in_transit: true
+  
+  data_masking:
+    enabled: true
+    columns:
+      - "dim.customer.customer_id"
+      - "fact.credit_risk.loan_id"
+  
+  audit_logging:
+    enabled: true
+    log_all_queries: false
+    log_data_access: true
+    retention_days: 365
+
+# Performance Tuning
+performance:
+  query_timeout_seconds: 300
+  max_concurrent_queries: 10
+  cache_enabled: true
+  cache_ttl_seconds: 3600
+  
+  indexing:
+    auto_create: true
+    auto_update_statistics: true
+  
+  partitioning:
+    enabled: true
+    partition_column: "date_key"
+    partition_range: "monthly"
